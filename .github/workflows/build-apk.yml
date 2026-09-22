@@ -1,0 +1,94 @@
+name: Build GOPAL AI APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build GOPAL AI
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Find GOPAL AI ZIP
+        run: |
+          echo "Mencari ZIP GOPAL AI..."
+          find . -maxdepth 2 -type f -name "*.zip" -print
+
+      - name: Extract GOPAL AI project
+        run: |
+          mkdir -p gopal-project
+
+          ZIP_FILE=$(find . -maxdepth 2 -type f -name "*.zip" | head -n 1)
+
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERROR: ZIP GOPAL AI tidak ditemukan."
+            exit 1
+          fi
+
+          echo "ZIP ditemukan: $ZIP_FILE"
+          unzip -q "$ZIP_FILE" -d gopal-project
+
+          echo "Isi project:"
+          find gopal-project -maxdepth 3 -type f | head -100
+
+      - name: Detect project folder
+        run: |
+          if [ -f "gopal-project/settings.gradle.kts" ]; then
+            echo "PROJECT_DIR=gopal-project" >> "$GITHUB_ENV"
+          elif [ -f "gopal-project/GOPAL-AI-V1/settings.gradle.kts" ]; then
+            echo "PROJECT_DIR=gopal-project/GOPAL-AI-V1" >> "$GITHUB_ENV"
+          else
+            echo "ERROR: settings.gradle.kts tidak ditemukan."
+            find gopal-project -name settings.gradle.kts -print
+            exit 1
+          fi
+
+      - name: Make Gradle executable
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+          fi
+
+      - name: Build Debug APK
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          if [ -f "./gradlew" ]; then
+            ./gradlew :app:assembleDebug --stacktrace
+          else
+            gradle :app:assembleDebug --stacktrace
+          fi
+
+      - name: Check APK
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          echo "APK hasil build:"
+          find app/build/outputs -type f -name "*.apk" -print
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: GOPAL-AI-debug
+          path: |
+            ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
